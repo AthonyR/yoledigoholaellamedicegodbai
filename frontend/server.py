@@ -21,6 +21,7 @@ ASSETS = {
     "/": ("index.html", "text/html"),
     "/styles.css": ("styles.css", "text/css"),
     "/app.js": ("app.js", "text/javascript"),
+    "/ast.js": ("ast.js", "text/javascript"),
 }
 JOBS = threading.BoundedSemaphore(2)
 

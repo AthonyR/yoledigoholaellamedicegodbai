@@ -31,6 +31,14 @@ const demo = headers + [
 ].join("\n");
 const demonstrations = new Map([
   ["Optimización y bucle", demo],
+  ["Árbol de expresión", headers + [
+    "int main() {",
+    "    int a = 12, b = 2, c = 3, d = 4;",
+    "    cout << ((a - b * c) + d) << endl;",
+    "    return 0;",
+    "}",
+    "",
+  ].join("\n")],
   ["Error léxico", "int main() {\n    return @;\n}\n"],
   ["Error sintáctico", "int main() {\n    int n = ;\n    return 0;\n}\n"],
   ["Error semántico", "int main() {\n    return desconocida;\n}\n"],
@@ -119,6 +127,7 @@ function selectTab(name, focus = false) {
     if (selected && focus) tab.focus();
   }
   find("views").scrollTop = 0;
+  if (name === "ast") find("ast-viewport")?.dispatchEvent(new Event("ast-visible"));
 }
 
 function empty(title, text) {
@@ -198,9 +207,7 @@ function render(result) {
 
   const ast = panels.get("ast");
   if (result?.ast) {
-    const tree = element("ul", "", "tree");
-    tree.append(renderTree(result.ast));
-    ast.replaceChildren(element("p", "Árbol sintáctico del programa. Abre o cierra cada rama para explorar sus nodos.", "view-note"), tree);
+    ast.replaceChildren(...renderAST(result.ast));
   } else {
     ast.replaceChildren(empty("AST no disponible", "Se muestra cuando el análisis sintáctico termina correctamente."));
   }

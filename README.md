@@ -48,7 +48,7 @@ puerto indicado en la terminal.
 
 - **Compilar** genera los resultados de cada fase. Los errores con ubicación resaltan una
   línea del editor. Pulsa la ubicación en **Diagnósticos** para saltar a ella.
-- **AST** muestra el árbol del parser. **IR** compara el grafo de flujo de control (CFG) que usa
+- **AST** muestra el árbol del parser como diagrama o lista. En **Rama** puedes aislar una expresión. **IR** compara el grafo de flujo de control (CFG) que usa
   el optimizador. Cada fila contiene una operación y sus posibles sucesores. El proyecto aplica
   las transformaciones sobre el AST y reconstruye el CFG para mostrar el resultado.
 - **Optimizar** activa las optimizaciones del AST y del ensamblador. **Seguridad** activa el
