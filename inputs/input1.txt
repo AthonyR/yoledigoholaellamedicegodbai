@@ -1,0 +1,16 @@
+#include <iostream>
+using namespace std;
+
+int main() {
+    int a = 7, b = 3;
+    int r;
+    r = a + b * 2 - 4 / 2;
+    cout << r << endl;
+    r = (a + b) * (a - b);
+    cout << r << endl;
+    r = -a + b;
+    cout << r << endl;
+    r = 100 / 7;
+    cout << r << endl;
+    return 0;
+}

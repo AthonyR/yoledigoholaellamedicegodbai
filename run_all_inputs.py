@@ -1,0 +1,132 @@
+import os
+import re
+import signal
+import subprocess
+import shutil
+import time
+
+# Archivos c++
+programa = ["main.cpp", "scanner.cpp", "token.cpp", "parser.cpp", "ast.cpp", "visitor.cpp", "tipo_utils.cpp", 
+            "type_checker_visitor.cpp", "gencode_visitor.cpp", "type.cpp",
+            "optimizer.cpp", "peephole.cpp", "seguridad.cpp"]
+
+# Compilar
+compile = ["g++"] + programa
+print("Compilando:", " ".join(compile))
+result = subprocess.run(compile, capture_output=True, text=True)
+
+if result.returncode != 0:
+    print("Error en compilación:\n", result.stderr)
+    exit(1)
+
+print("Compilación exitosa")
+
+input_dir = "inputs"
+output_dir = "outputs"
+LIMITE_SEGUNDOS = 5          # tiempo máximo por programa
+
+# Carpeta de salida limpia: al final solo quedan los .s y el reporte
+os.makedirs(output_dir, exist_ok=True)
+for nombre in os.listdir(output_dir):
+    if nombre == ".gitkeep":
+        continue
+    ruta = os.path.join(output_dir, nombre)
+    if os.path.isdir(ruta):
+        shutil.rmtree(ruta)
+    else:
+        os.remove(ruta)
+reporte = []
+
+
+def ejecutar(filepath):
+    """Corre el compilador sobre un input. Si el .s generado no termina (por ejemplo,
+    porque no se reservó la pila), corta el compilador y el programa que lanzó."""
+    proceso = subprocess.Popen(["./a.out", filepath], stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        salida, errores = proceso.communicate(timeout=LIMITE_SEGUNDOS)
+        return proceso.returncode, salida, errores
+    except subprocess.TimeoutExpired:
+        os.killpg(proceso.pid, signal.SIGKILL)
+        salida, errores = proceso.communicate()
+        return 1, salida, f"el programa no terminó en {LIMITE_SEGUNDOS} s"
+
+def tiempos(salida, total):
+    def buscar(etiqueta):
+        m = re.search(rf"^{etiqueta}: ([\d.]+) ms$", salida, re.MULTILINE)
+        return f"{float(m.group(1)):.3f} ms" if m else "no medido"
+    return (f"  Compilación (scanner, parser, typecheck, gencode): {buscar('Tiempo de compilacion')}\n"
+            f"  Ensamblado (gcc) y ejecución:                     {buscar('Tiempo de ensamblado y ejecucion')}\n"
+            f"  Total del proceso:                                {total * 1000:.3f} ms")
+
+def estado_typechecker(salida, errores):
+    """Devuelve (pasó, texto) a partir de lo que imprimió el compilador."""
+    if "Typecheck exitoso" in salida.splitlines():
+        return True, "PASÓ (Typecheck exitoso)"
+    primera = errores.strip().splitlines()[0] if errores.strip() else "sin mensaje"
+    if primera.startswith("Error de tipos"):
+        return False, "NO PASÓ\n  " + primera
+    return None, "NO SE EJECUTÓ\n  " + primera      # p. ej. error de parseo
+
+
+# Todos los inputN.txt de la carpeta, en orden numérico
+numeros = sorted(int(m.group(1)) for f in os.listdir(input_dir)
+                 if (m := re.fullmatch(r"input(\d+)\.txt", f)))
+
+for i in numeros:
+    filename = f"input{i}.txt"
+    filepath = os.path.join(input_dir, filename)
+    print(f"Ejecutando {filename}")
+    t0 = time.perf_counter()
+    codigo, salida, errores = ejecutar(filepath)
+    total = time.perf_counter() - t0
+
+    # Archivos que genera el compilador en inputs/
+    tokens_file = os.path.join(input_dir, f"input{i}_tokens.txt")
+    asm_file = os.path.join(input_dir, f"input{i}.s")
+    salida_file = os.path.join(input_dir, f"input{i}_salida.txt")
+    exe_file = os.path.join(input_dir, f"input{i}.out")
+
+    with open(filepath, encoding="utf-8") as f:
+        ejercicio = f.read().strip()
+
+    paso, typechecker = estado_typechecker(salida, errores)
+    avisos = [l for l in salida.splitlines() if l.startswith("Advertencia")]
+    seguridad = "Seguridad:\n" + "\n".join("  " + a for a in avisos) + "\n\n" if avisos else ""
+    if paso is not True:
+        resultado = "No se generó: el programa no pasó el TypeChecker" if paso is False \
+                    else "No se generó"
+    elif any(linea.startswith("Salida guardada en ") for linea in salida.splitlines()) \
+            and os.path.isfile(salida_file):
+        with open(salida_file, encoding="utf-8") as f:
+            resultado = f.read().strip()
+        resultado = (resultado or "(sin salida)") + f"\nCódigo de salida: {codigo}"
+        if errores.strip():
+            resultado += "\nDiagnóstico de ejecución:\n" + errores.strip()
+    else:
+        resultado = "ERROR: " + (errores.strip() or "el .s no se pudo ensamblar o ejecutar")
+
+    reporte.append("=" * 40 + "\n"
+                   + f"{filename}\n"
+                   + "=" * 40 + "\n"
+                   + "Ejercicio:\n"
+                   + ejercicio + "\n\n"
+                   + "TypeChecker: " + typechecker + "\n\n"
+                   + f"Resultado de input{i}.s:\n"
+                   + resultado + "\n"
+                + "TypeChecker: " + typechecker + "\n\n"
+                   + seguridad
+                   + "Tiempos:\n" + tiempos(salida, total) + "\n\n")
+
+    # Conservar solo el .s; borrar tokens, salida y ejecutable
+    if os.path.isfile(asm_file):
+        shutil.move(asm_file, os.path.join(output_dir, f"input{i}.s"))
+    for residuo in (tokens_file, salida_file, exe_file):
+        if os.path.isfile(residuo):
+            os.remove(residuo)
+
+# Guardar el reporte
+reporte_file = os.path.join(output_dir, "reporte.txt")
+with open(reporte_file, "w", encoding="utf-8") as f:
+    f.write("\n".join(reporte))
+print("Reporte generado en", reporte_file)
