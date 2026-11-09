@@ -31,6 +31,16 @@ const demo = headers + [
 ].join("\n");
 const demonstrations = new Map([
   ["Optimización y bucle", demo],
+  ["Sentencias del AST", headers + [
+    "int main() {",
+    "    int n = 0;",
+    "    do n = n + 1; while (n < 2);",
+    "    while (n < 4) n = n + 1;",
+    "    cout << n << endl;",
+    "    return 0;",
+    "}",
+    "",
+  ].join("\n")],
   ["Árbol de expresión", headers + [
     "int main() {",
     "    int a = 12, b = 2, c = 3, d = 4;",
@@ -148,11 +158,11 @@ function codeBlock(text, title) {
 function renderTree(node, depth = 0) {
   const item = element("li");
   if (!node.children.length) {
-    item.append(element("span", node.label, "leaf"));
+    item.append(element("span", astNodeLabel(node), "leaf"));
     return item;
   }
   const details = element("details");
-  details.append(element("summary", node.label));
+  details.append(element("summary", astNodeLabel(node)));
   const showChildren = () => {
     const list = element("ul");
     for (const child of node.children) list.append(renderTree(child, depth + 1));

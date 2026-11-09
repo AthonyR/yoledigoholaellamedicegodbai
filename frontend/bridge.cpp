@@ -32,11 +32,16 @@ struct NodoVista {
     string operacion;
     string detalle;
     vector<NodoVista> hijos;
+    string clase;
 };
 
 void escribirArbol(ostream& out, const NodoVista& nodo) {
     out << "{\"label\":";
     jsonString(out, nodo.operacion + (nodo.detalle.empty() ? "" : "  " + nodo.detalle));
+    if (!nodo.clase.empty()) {
+        out << ",\"className\":";
+        jsonString(out, nodo.clase);
+    }
     out << ",\"children\":[";
     for (size_t i = 0; i < nodo.hijos.size(); ++i) {
         if (i) out << ',';
@@ -71,8 +76,8 @@ class VistaAST : public Visitor {
         return grupo;
     }
 
-    Type expresion(Exp* nodo, string op, string detalle = "", vector<NodoVista> hijos = {}) {
-        resultado = {std::move(op), std::move(detalle), std::move(hijos)};
+    Type expresion(Exp* nodo, const char* clase, string op, string detalle = "", vector<NodoVista> hijos = {}) {
+        resultado = {std::move(op), std::move(detalle), std::move(hijos), clase};
         return nodo->tipoExp;
     }
 
@@ -92,15 +97,15 @@ public:
     }
 
     Type visit(BinaryExp* e) override {
-        return expresion(e, operador(e->op), e->sobrecarga, {leer(e->left), leer(e->right)});
+        return expresion(e, "BinaryExp", operador(e->op), e->sobrecarga, {leer(e->left), leer(e->right)});
     }
     Type visit(UnaryExp* e) override {
-        return expresion(e, e->op == NOT_OP ? "!" : "neg", "", {leer(e->e)});
+        return expresion(e, "UnaryExp", e->op == NOT_OP ? "!" : "neg", "", {leer(e->e)});
     }
     Type visit(StructExp* e) override {
-        return expresion(e, "agregado", e->nombre, grupo("", e->valores).hijos);
+        return expresion(e, "StructExp", "agregado", e->nombre, grupo("", e->valores).hijos);
     }
-    Type visit(CampoExp* e) override { return expresion(e, "campo", e->campo, {leer(e->objeto)}); }
+    Type visit(CampoExp* e) override { return expresion(e, "CampoExp", "campo", e->campo, {leer(e->objeto)}); }
     Type visit(NumberExp* e) override {
         string valor = to_string(e->value);
         string tipo = Type::nombre(e->tipo);
@@ -118,73 +123,77 @@ public:
             numero << setprecision(17) << e->valorFloat;
             valor = numero.str();
         }
-        return expresion(e, tipo, valor);
+        return expresion(e, "NumberExp", tipo, valor);
     }
-    Type visit(IdExp* e) override { return expresion(e, "variable", e->value); }
+    Type visit(IdExp* e) override { return expresion(e, "IdExp", "variable", e->value); }
     Type visit(IfExp* e) override {
-        return expresion(e, "?:", "", {leer(e->condicion), leer(e->thenExp), leer(e->elseExp)});
+        return expresion(e, "IfExp", "?:", "", {leer(e->condicion), leer(e->thenExp), leer(e->elseExp)});
     }
     Type visit(FCallExp* e) override {
-        return expresion(e, "llamar", e->nombre, grupo("", e->argumentos).hijos);
+        return expresion(e, "FCallExp", "llamar", e->nombre, grupo("", e->argumentos).hijos);
     }
     Type visit(ArrayExp* e) override {
-        return expresion(e, "indexar", e->nombre, grupo("", e->indices).hijos);
+        return expresion(e, "ArrayExp", "indexar", e->nombre, grupo("", e->indices).hijos);
     }
     Type visit(IncDecExp* e) override {
         string op = e->prefijo ? "pre" : "post";
         op += e->incremento ? "++" : "--";
-        return expresion(e, op, e->nombre, grupo("", e->indices).hijos);
+        return expresion(e, "IncDecExp", op, e->nombre, grupo("", e->indices).hijos);
     }
-    Type visit(DireccionExp* e) override { return expresion(e, "dirección", "", {leer(e->destino)}); }
-    Type visit(DerefExp* e) override { return expresion(e, "desreferenciar", "", {leer(e->puntero)}); }
-    Type visit(LongitudExp* e) override { return expresion(e, "longitud", "", {leer(e->cadena)}); }
+    Type visit(DireccionExp* e) override { return expresion(e, "DireccionExp", "dirección", "", {leer(e->destino)}); }
+    Type visit(DerefExp* e) override { return expresion(e, "DerefExp", "desreferenciar", "", {leer(e->puntero)}); }
+    Type visit(LongitudExp* e) override { return expresion(e, "LongitudExp", "longitud", "", {leer(e->cadena)}); }
 
     void visit(AssignStmt* s) override {
         vector<NodoVista> operandos = grupo("", s->indices).hijos;
         operandos.push_back(leer(s->e));
-        resultado = {"asignar", s->id + (s->campo.empty() ? "" : "." + s->campo), operandos};
+        resultado = {"asignar", s->id + (s->campo.empty() ? "" : "." + s->campo), operandos, "AssignStmt"};
     }
     void visit(AssignPunteroStmt* s) override {
-        resultado = {"asignar por puntero", "", {leer(s->puntero), leer(s->e)}};
+        resultado = {"asignar por puntero", "", {leer(s->puntero), leer(s->e)}, "AssignPunteroStmt"};
     }
     void visit(PrintStmt* s) override {
         vector<NodoVista> partes;
         for (Exp* e : s->expresiones) partes.push_back(e ? leer(e) : NodoVista{"endl", "", {}});
-        resultado = {"cout", "", partes};
+        resultado = {"cout", "", partes, "PrintStmt"};
     }
     void visit(IfStmt* s) override {
-        resultado = {"if", "", {leer(s->condicion), grupo("entonces", s->thenList), grupo("si no", s->elseList)}};
+        resultado = {"if", "", {leer(s->condicion), grupo("entonces", s->thenList), grupo("si no", s->elseList)}, "IfStmt"};
     }
     void visit(WhileStmt* s) override {
-        resultado = {"while", "", {leer(s->condicion), grupo("cuerpo", s->body)}};
+        resultado = {"while", "", {leer(s->condicion), grupo("cuerpo", s->body)}, "WhileStmt"};
     }
     void visit(DoWhileStmt* s) override {
-        resultado = {"do while", "", {grupo("cuerpo", s->body), leer(s->condicion)}};
+        resultado = {"do while", "", {grupo("cuerpo", s->body), leer(s->condicion)}, "DoWhileStmt"};
     }
     void visit(ForStmt* s) override {
         resultado = {"for", "", {{"inicio", "", {leer(s->init)}},
                                   {"condición", "", {leer(s->condicion)}},
-                                  {"actualización", "", {leer(s->actualizacion)}}, grupo("cuerpo", s->body)}};
+                                  {"actualización", "", {leer(s->actualizacion)}}, grupo("cuerpo", s->body)}, "ForStmt"};
     }
     void visit(SwitchStmt* s) override {
-        NodoVista arbol{"switch", "", {leer(s->condicion)}};
+        NodoVista arbol{"switch", "", {leer(s->condicion)}, "SwitchStmt"};
         size_t etiqueta = 0;
         for (size_t i = 0; i <= s->sentencias.size(); ++i) {
             while (etiqueta < s->etiquetas.size() && s->etiquetas[etiqueta].posicion == i) {
                 Exp* e = s->etiquetas[etiqueta++].expresion;
-                arbol.hijos.push_back(e ? NodoVista{"case", "", {leer(e)}} : NodoVista{"default", "", {}});
+                arbol.hijos.push_back(e ? NodoVista{"case", "", {leer(e)}, "SwitchStmt::Etiqueta"}
+                                        : NodoVista{"default", "", {}, "SwitchStmt::Etiqueta"});
             }
             if (i < s->sentencias.size()) arbol.hijos.push_back(leer(s->sentencias[i]));
         }
         resultado = std::move(arbol);
     }
-    void visit(BreakStmt*) override { resultado = {"break", "", {}}; }
-    void visit(ContinueStmt*) override { resultado = {"continue", "", {}}; }
+    void visit(BreakStmt*) override { resultado = {"break", "", {}, "BreakStmt"}; }
+    void visit(ContinueStmt*) override { resultado = {"continue", "", {}, "ContinueStmt"}; }
     void visit(ReturnStmt* s) override {
-        resultado = {"return", "", s->exp ? vector<NodoVista>{leer(s->exp)} : vector<NodoVista>{}};
+        resultado = {"return", "", s->exp ? vector<NodoVista>{leer(s->exp)} : vector<NodoVista>{}, "ReturnStmt"};
     }
-    void visit(BlockStmt* s) override { resultado = grupo("bloque", s->sentencias); }
-    void visit(ExprStmt* s) override { resultado = {"evaluar", "", {leer(s->e)}}; }
+    void visit(BlockStmt* s) override {
+        resultado = grupo("bloque", s->sentencias);
+        resultado.clase = "BlockStmt";
+    }
+    void visit(ExprStmt* s) override { resultado = {"evaluar", "", {leer(s->e)}, "ExprStmt"}; }
 
     NodoVista variable(VarDec* d, size_t i) {
         string firma = (d->esConst ? "const " : "") + d->tipo + " " + d->variables[i];
@@ -196,15 +205,18 @@ public:
     }
 
     void visit(VarDec* d) override {
-        NodoVista dec{"declaraciones", "", {}};
+        NodoVista dec{"declaraciones", "", {}, "VarDec"};
         for (size_t i = 0; i < d->variables.size(); ++i) dec.hijos.push_back(variable(d, i));
         resultado = std::move(dec);
     }
 
-    void visit(Body* b) override { resultado = grupo("cuerpo", b->sentencias); }
+    void visit(Body* b) override {
+        resultado = grupo("cuerpo", b->sentencias);
+        resultado.clase = "Body";
+    }
 
     void visit(FunDec* f) override {
-        NodoVista fun{f->cuerpo ? "función" : "prototipo", f->tipo + " " + f->nombre, {}};
+        NodoVista fun{f->cuerpo ? "función" : "prototipo", f->tipo + " " + f->nombre, {}, "FunDec"};
         for (size_t i = 0; i < f->parametros_tipos.size(); ++i) {
             string parametro = (f->parametros_const[i] ? "const " : "") + f->parametros_tipos[i];
             if (f->parametros_ref[i]) parametro += '&';
@@ -216,7 +228,7 @@ public:
     }
 
     void visit(Programa* p) override {
-        NodoVista programa{"programa", "", {}};
+        NodoVista programa{"programa", "", {}, "Programa"};
         map<string, vector<string>> estructuras(p->estructuras.begin(), p->estructuras.end());
         for (const auto& [nombre, campos] : estructuras) {
             NodoVista agregado{"struct", nombre, {}};
@@ -225,7 +237,7 @@ public:
         }
         map<string, Plantilla> plantillas(p->plantillas.begin(), p->plantillas.end());
         for (const auto& [nombre, p] : plantillas) {
-            NodoVista plantilla{"template", nombre, {}};
+            NodoVista plantilla{"template", nombre, {}, "Plantilla"};
             for (const string& tipo : p.tparams) plantilla.hijos.push_back({"tipo", tipo, {}});
             programa.hijos.push_back(std::move(plantilla));
         }
